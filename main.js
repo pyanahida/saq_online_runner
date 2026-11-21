@@ -10,11 +10,10 @@ const promptEl = document.getElementById('prompt');
 const inputBox = document.getElementById('inputBox');
 const okBtn = document.getElementById('ok');
 
-// 动态加载示例
 fetch('./eg.txt')
   .then((r) => r.text())
   .then((t) => { codeEl.value = t; })
-  .catch(() => { codeEl.value = 'main{\n    say(\'hello\');\n}\n'; });
+  .catch(() => { codeEl.value = "main{\n    say('hello');\n}\n"; });
 
 let pendingResolve = null;
 
@@ -60,13 +59,13 @@ runBtn.addEventListener('click', async () => {
   try {
     ast = parse(lex(src));
   } catch (e) {
-    printError(`语法错误: ${e.message}`);
+    printError(`Syntax error: ${e.message}`);
     return;
   }
   const interp = new Interpreter({ print, input: showInput });
   try {
     await interp.run(ast);
   } catch (e) {
-    printError(`运行时错误: ${e.message}`);
+    printError(`Runtime error: ${e.message}`);
   }
 });

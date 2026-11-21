@@ -1,18 +1,19 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Saq</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saq Online Runner</title>
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<div id="editor"><textarea id="code" spellcheck="false"></textarea></div>
-<div id="bar"><button id="run">运行</button></div>
+<div id="editor"><textarea id="code" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea></div>
+<div id="bar"><button id="run">Run</button></div>
 <div id="console"></div>
 <div id="overlay"><div id="dialog">
   <p id="prompt"></p>
   <input id="inputBox" autocomplete="off">
-  <div class="row"><button id="ok">确定</button></div>
+  <div class="row"><button id="ok">OK</button></div>
 </div></div>
 <script type="module" src="./main.js"></script>
 </body>
