@@ -1,10 +1,3 @@
-// 求值：AST -> 结果
-// 关键点：
-//   - 块参数（{...}）不立即执行，包成 thunk 传给内建函数
-//   - while 的第一个参数需要反复求值，包成 thunk
-//   - input 是异步的，所以整条求值链是 async
-//   - 未声明变量直接抛错，整个程序停止
-
 import { makeBuiltins } from './builtins.js';
 
 export class Interpreter {
@@ -17,6 +10,7 @@ export class Interpreter {
       vars: this.vars,
       sysvars: this.sysvars,
       print: (v) => this.io.print(String(v)),
+      input: (text) => this.io.input(text),
     });
   }
 
@@ -25,7 +19,6 @@ export class Interpreter {
     this.startTime = performance.now();
     this.sysvars.set('time', Date.now());
     this.sysvars.set('clock', 0);
-
     for (const stmt of ast.body) {
       await this.exec(stmt);
     }
@@ -56,13 +49,10 @@ export class Interpreter {
       case 'Num':
       case 'Str':
         return node.value;
-
       case 'Hash':
         return this.evalHash(node);
-
       case 'Call':
         return this.evalCall(node);
-
       default:
         throw new Error(`未知表达式类型 ${node.type}`);
     }
@@ -70,23 +60,16 @@ export class Interpreter {
 
   async evalHash(node) {
     const { count, name, args } = node;
-
-    // ##x：系统变量
     if (count === 2) {
       if (args) throw new SyntaxError(`系统变量 '##${name}' 不能赋值`);
       if (!this.sysvars.has(name)) throw new ReferenceError(`系统变量 '${name}' 不存在`);
       return this.sysvars.get(name);
     }
-
     if (count !== 1) throw new SyntaxError(`'${'#'.repeat(count)}${name}' 不合法`);
-
-    // #a：读
     if (!args) {
       if (!this.vars.has(name)) throw new ReferenceError(`变量 '${name}' 未定义`);
       return this.vars.get(name);
     }
-
-    // #a(...)：赋值糖
     if (args.length !== 1) throw new SyntaxError(`'#${name}(...)' 只能接受一个参数`);
     if (!this.vars.has(name)) throw new ReferenceError(`变量 '${name}' 未定义`);
     const val = await this.evalArg(args[0]);
@@ -96,7 +79,6 @@ export class Interpreter {
 
   async evalCall(node) {
     const { callee, args } = node;
-
     if (callee === 'input') {
       const prompt = args.length ? String(await this.evalArg(args[0])) : '';
       const value = await this.io.input(prompt);
@@ -107,14 +89,10 @@ export class Interpreter {
     const fn = this.builtins[callee];
     if (!fn) throw new ReferenceError(`未知函数 '${callee}'`);
 
-    // while 的条件需要反复求值：包成 thunk
+    // while 条件要反复同步求值，单独包成 thunk；其余参数正常求值
     if (callee === 'while') {
-      const [, body] = args;
-      const condFn = () => {
-        // 这里必须同步拿到布尔值，而 evalArg 是 async；
-        // 由于条件表达式不含 input，我们同步求值一次即可
-        return this.evalSync(args[0]);
-      };
+      const condFn = () => this.evalSync(args[0]);
+      const body = args[1];
       while (condFn()) {
         await this.execBlockArg(body);
       }
@@ -123,25 +101,22 @@ export class Interpreter {
 
     const values = [];
     for (const a of args) values.push(await this.evalArg(a));
-    return fn(...values);
+    return await fn(...values);
   }
 
-  // 参数求值：块不执行，包成 thunk
-  async evalCall(node) {
-      const fn = this.builtins[node.callee];
-      if (!fn) throw new ReferenceError(`Unknown function '${node.callee}'`);
-      const values = [];
-      for (const a of node.args) values.push(await this.evalArg(a));
-      return await fn(...values);
+  async evalArg(arg) {
+    if (arg.type === 'Block') {
+      const self = this;
+      return function () { return self.exec(arg); };
     }
-  
+    return this.evalExpr(arg);
+  }
 
   async execBlockArg(arg) {
     if (arg.type !== 'Block') throw new TypeError('此处需要块参数 {...}');
     await this.exec(arg);
   }
 
-  // 同步求值：仅用于不含 input 的表达式（如 while 条件）
   evalSync(node) {
     switch (node.type) {
       case 'Num':

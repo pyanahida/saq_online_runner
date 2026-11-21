@@ -5,29 +5,29 @@ export function makeBuiltins(rt) {
     var: (k, v) => { rt.vars.set(String(k), v); return undefined; },
     v: (k) => {
       const key = String(k);
-      if (!rt.vars.has(key)) throw new ReferenceError(`Variable '${key}' is not defined`);
+      if (!rt.vars.has(key)) throw new ReferenceError(`变量 '${key}' 未定义`);
       return rt.vars.get(key);
     },
     rs: (k, v) => {
       const key = String(k);
-      if (!rt.vars.has(key)) throw new ReferenceError(`Variable '${key}' is not defined`);
+      if (!rt.vars.has(key)) throw new ReferenceError(`变量 '${key}' 未定义`);
       rt.vars.set(key, v);
       return undefined;
     },
     reset: (k, v) => {
       const key = String(k);
-      if (!rt.vars.has(key)) throw new ReferenceError(`Variable '${key}' is not defined`);
+      if (!rt.vars.has(key)) throw new ReferenceError(`变量 '${key}' 未定义`);
       rt.vars.set(key, v);
       return undefined;
     },
     vg: (k) => {
       const key = String(k);
-      if (!rt.sysvars.has(key)) throw new ReferenceError(`System variable '${key}' does not exist`);
+      if (!rt.sysvars.has(key)) throw new ReferenceError(`系统变量 '${key}' 不存在`);
       return rt.sysvars.get(key);
     },
     sa: (k, x) => {
       const key = String(k);
-      if (!rt.vars.has(key)) throw new ReferenceError(`Variable '${key}' is not defined`);
+      if (!rt.vars.has(key)) throw new ReferenceError(`变量 '${key}' 未定义`);
       rt.vars.set(key, num(rt.vars.get(key)) + num(x));
       return undefined;
     },
@@ -47,11 +47,6 @@ export function makeBuiltins(rt) {
     and: (a, b) => Boolean(a) && Boolean(b),
     or: (a, b) => Boolean(a) || Boolean(b),
     not: (a) => !a,
-    input: async (text) => {
-      const v = await rt.input(String(text));
-      rt.sysvars.set('ipt', v);
-      return undefined;
-    },
     if: async (cond, thenBlock) => {
       if (cond) await thenBlock();
       return undefined;
