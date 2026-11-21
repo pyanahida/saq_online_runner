@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Saq</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="editor"><textarea id="code" spellcheck="false">main{
+    input('请输入一个数字');
+    #n(tonum(##ipt));
+    if(not(eq(#n, #n)), {
+        say('不是数字');
+    }, {
+        #i(0);
+        #sum(0);
+        while(lt(#i, #n), {
+            sa('sum', #i);
+            sa('i', 1);
+        });
+        say(cat('累加: ', #sum));
+    });
+}</textarea></div>
+<div id="bar"><button id="run">运行</button></div>
+<div id="console"></div>
+<div id="overlay"><div id="dialog">
+  <p id="prompt"></p>
+  <input id="inputBox" autocomplete="off">
+  <div class="row"><button id="ok">确定</button></div>
+</div></div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
