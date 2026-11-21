@@ -56,6 +56,21 @@ export function lex(src) {
       continue;
     }
 
+    if (ch === '&') {
+      i++; col++;
+      let name = '';
+      while (i < src.length && IDENT_PART.test(src[i])) { name += src[i]; i++; col++; }
+      if (!name) throw new SyntaxError(`Line ${sl}: expected name after '&'`);
+      push('amp', { name }, sl, sc);
+      continue;
+    }
+
+    if (ch === ':' && src[i + 1] === ':') {
+      push('punct', '::', sl, sc);
+      i += 2; col += 2;
+      continue;
+    }
+
     if (IDENT_START.test(ch)) {
       let name = '';
       while (i < src.length && IDENT_PART.test(src[i])) { name += src[i]; i++; col++; }

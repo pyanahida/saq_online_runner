@@ -1,46 +1,47 @@
-import { makeBuiltins } from './builtins.js';
-
 export class Interpreter {
   constructor(io) {
     this.io = io;
     this.vars = new Map();
-    this.sysvars = new Map();
-    this.startTime = performance.now();
-    this.builtins = makeBuiltins({
-      vars: this.vars,
-      sysvars: this.sysvars,
-      print: (v) => this.io.print(String(v)),
-      input: (text) => this.io.input(text),
-    });
+    this.funcs = new Map();
+    this.endBlock = null;
+    this.frames = [];
   }
 
-  async run(ast) {
-    this.vars.clear();
-    this.startTime = performance.now();
-    this.sysvars.set('time', Date.now());
-    this.sysvars.set('clock', 0);
-    for (const stmt of ast.body) {
-      await this.exec(stmt);
+  async run(program) {
+    for (const node of program.body) {
+      if (node.type === 'Def') {
+        this.funcs.set(node.name, node);
+      } else if (node.type === 'End') {
+        this.endBlock = node;
+      }
+    }
+
+    for (const node of program.body) {
+      if (node.type === 'ExprStmt') {
+        await this.exec(node);
+      }
+    }
+
+    if (this.endBlock) {
+      await this.execBlock(this.endBlock.body);
     }
   }
 
   async exec(node) {
-    switch (node.type) {
-      case 'Empty': return;
-      case 'Block': {
-        for (const s of node.body) await this.exec(s);
-        return;
-      }
-      case 'Main': {
-        await this.exec(node.block);
-        return;
-      }
-      case 'ExprStmt': {
-        await this.evalExpr(node.expr);
-        return;
-      }
-      default:
-        throw new Error(`未知语句类型 ${node.type}`);
+    if (node.type === 'ExprStmt') {
+      await this.evalExpr(node.expr);
+      return;
+    }
+    if (node.type === 'Block') {
+      await this.execBlock(node);
+      return;
+    }
+    await this.evalExpr(node);
+  }
+
+  async execBlock(block) {
+    for (const s of block.body) {
+      await this.exec(s);
     }
   }
 
@@ -49,102 +50,121 @@ export class Interpreter {
       case 'Num':
       case 'Str':
         return node.value;
-      case 'Hash':
-        return this.evalHash(node);
-      case 'Call':
-        return this.evalCall(node);
-      default:
-        throw new Error(`未知表达式类型 ${node.type}`);
-    }
-  }
 
-  async evalHash(node) {
-    const { count, name, args } = node;
-    if (count === 2) {
-      if (args) throw new SyntaxError(`系统变量 '##${name}' 不能赋值`);
-      if (!this.sysvars.has(name)) throw new ReferenceError(`系统变量 '${name}' 不存在`);
-      return this.sysvars.get(name);
+      case 'Hash': {
+        if (!this.vars.has(node.name)) {
+          throw new Error(`变量 '${node.name}' 未定义`);
+        }
+        return this.vars.get(node.name);
+      }
+
+      case 'Amp': {
+        const frame = this.frames[this.frames.length - 1];
+        if (!frame) {
+          if (!this.vars.has(node.name)) throw new Error(`变量 '${node.name}' 未定义`);
+          return this.vars.get(node.name);
+        }
+        return frame.params.get(node.name);
+      }
+
+      case 'Ident':
+        return node;
+
+      case 'UserCallRef':
+        return node;
+
+      case 'Call':
+        return await this.evalCall(node);
+
+      default:
+        throw new Error(`unknown expression: ${node.type}`);
     }
-    if (count !== 1) throw new SyntaxError(`'${'#'.repeat(count)}${name}' 不合法`);
-    if (!args) {
-      if (!this.vars.has(name)) throw new ReferenceError(`变量 '${name}' 未定义`);
-      return this.vars.get(name);
-    }
-    if (args.length !== 1) throw new SyntaxError(`'#${name}(...)' 只能接受一个参数`);
-    if (!this.vars.has(name)) throw new ReferenceError(`变量 '${name}' 未定义`);
-    const val = await this.evalArg(args[0]);
-    this.vars.set(name, val);
-    return val;
   }
 
   async evalCall(node) {
-    const { callee, args } = node;
-    if (callee === 'input') {
-      const prompt = args.length ? String(await this.evalArg(args[0])) : '';
-      const value = await this.io.input(prompt);
-      this.sysvars.set('ipt', value);
-      return undefined;
+    const args = [];
+    for (const a of node.args) args.push(await this.evalExpr(a));
+
+    if (node.callee.type === 'UserCallRef') {
+      const def = this.funcs.get(node.callee.name);
+      if (!def) throw new Error(`函数 '${node.callee.name}' 未定义`);
+      return await this.callUser(def, args);
     }
 
-    const fn = this.builtins[callee];
-    if (!fn) throw new ReferenceError(`未知函数 '${callee}'`);
+    const name = node.callee.name;
+    const fn = this.builtins()[name];
+    if (!fn) throw new Error(`函数 '${name}' 未定义`);
+    return await fn.apply(this, args);
+  }
 
-    // while 条件要反复同步求值，单独包成 thunk；其余参数正常求值
-    if (callee === 'while') {
-      const condFn = () => this.evalSync(args[0]);
-      const body = args[1];
-      while (condFn()) {
-        await this.execBlockArg(body);
-      }
-      return undefined;
+  async callUser(def, args) {
+    const params = new Map();
+    for (let i = 0; i < def.params.length; i++) {
+      params.set(def.params[i], i < args.length ? args[i] : 0);
     }
-
-    const values = [];
-    for (const a of args) values.push(await this.evalArg(a));
-    return await fn(...values);
-  }
-
-  async evalArg(arg) {
-    if (arg.type === 'Block') {
-      const self = this;
-      return function () { return self.exec(arg); };
+    this.frames.push({ params });
+    try {
+      await this.execBlock(def.body);
+    } finally {
+      this.frames.pop();
     }
-    return this.evalExpr(arg);
+    return undefined;
   }
 
-  async execBlockArg(arg) {
-    if (arg.type !== 'Block') throw new TypeError('此处需要块参数 {...}');
-    await this.exec(arg);
-  }
+  builtins() {
+    const self = this;
 
-  evalSync(node) {
-    switch (node.type) {
-      case 'Num':
-      case 'Str':
-        return node.value;
-      case 'Hash': {
-        const { count, name, args } = node;
-        if (count === 2) {
-          if (!this.sysvars.has(name)) throw new ReferenceError(`系统变量 '${name}' 不存在`);
-          return this.sysvars.get(name);
+    const thunk = (arg) => {
+      if (arg && arg.type === 'Block') return () => self.execBlock(arg);
+      return async () => self.evalExpr(arg);
+    };
+
+    return {
+      say: (v) => { self.io.print(String(v)); return v; },
+
+      var: (name, value) => { self.vars.set(String(name), value); return value; },
+
+      del: (name) => { self.vars.delete(String(name)); return undefined; },
+
+      input: async (prompt) => {
+        const v = await self.io.input(String(prompt));
+        self.vars.set('ipt', v);
+        return v;
+      },
+
+      add: (a, b) => a + b,
+      sub: (a, b) => a - b,
+      mul: (a, b) => a * b,
+      div: (a, b) => a / b,
+      eq: (a, b) => a === b,
+      not: (a) => !a,
+      lt: (a, b) => a < b,
+      cat: (...xs) => xs.join(''),
+      tonum: (v) => Number(v),
+
+      'if-else': async (cond, thenB, elseB) => {
+        const c = await cond;
+        if (c) return await thunk(thenB)();
+        if (elseB) return await thunk(elseB)();
+        return undefined;
+      },
+
+      loop: async (n, body) => {
+        const times = Number(await n);
+        for (let k = 0; k < times; k++) await thunk(body)();
+        return undefined;
+      },
+
+      while: async (condArg, body) => {
+        const condThunk = thunk(condArg);
+        const bodyThunk = thunk(body);
+        let guard = 0;
+        while (await condThunk()) {
+          if (++guard > 100000) throw new Error('loop limit exceeded');
+          await bodyThunk();
         }
-        if (args) throw new SyntaxError('while 条件中不支持赋值');
-        if (!this.vars.has(name)) throw new ReferenceError(`变量 '${name}' 未定义`);
-        return this.vars.get(name);
+        return undefined;
       }
-      case 'Call': {
-        const { callee, args } = node;
-        if (callee === 'input') throw new SyntaxError('while 条件中不能调用 input');
-        const fn = this.builtins[callee];
-        if (!fn) throw new ReferenceError(`未知函数 '${callee}'`);
-        const values = args.map((a) => {
-          if (a.type === 'Block') throw new SyntaxError('while 条件中不能出现块');
-          return this.evalSync(a);
-        });
-        return fn(...values);
-      }
-      default:
-        throw new Error(`未知表达式类型 ${node.type}`);
-    }
+    };
   }
 }
