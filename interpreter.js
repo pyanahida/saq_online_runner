@@ -127,13 +127,14 @@ export class Interpreter {
   }
 
   // 参数求值：块不执行，包成 thunk
-  async evalArg(arg) {
-    if (arg.type === 'Block') {
-      const self = this;
-      return function () { return self.exec(arg); };
+  async evalCall(node) {
+      const fn = this.builtins[node.callee];
+      if (!fn) throw new ReferenceError(`Unknown function '${node.callee}'`);
+      const values = [];
+      for (const a of node.args) values.push(await this.evalArg(a));
+      return await fn(...values);
     }
-    return this.evalExpr(arg);
-  }
+  
 
   async execBlockArg(arg) {
     if (arg.type !== 'Block') throw new TypeError('此处需要块参数 {...}');
