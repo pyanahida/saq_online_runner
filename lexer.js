@@ -1,24 +1,18 @@
-// 词法：字符流 -> token 流
-// token: { type, value, line, col }
-// type: 'num' | 'str' | 'ident' | 'hash' | 'punct'
-
-const IDENT_CHAR = /[0-9A-Za-z\-_]/;
+const IDENT_START = /[A-Za-z_]/;
+const IDENT_PART = /[0-9A-Za-z_\-]/;
 
 export function lex(src) {
   const toks = [];
   let i = 0, line = 1, col = 1;
-
   const push = (type, value, l, c) => toks.push({ type, value, line: l, col: c });
 
   while (i < src.length) {
     const ch = src[i];
-    const startLine = line, startCol = col;
+    const sl = line, sc = col;
 
-    // 空白
     if (ch === ' ' || ch === '\t' || ch === '\r') { i++; col++; continue; }
     if (ch === '\n') { i++; line++; col = 1; continue; }
 
-    // 字符串：只用单引号
     if (ch === "'") {
       i++; col++;
       let s = '';
@@ -32,53 +26,50 @@ export function lex(src) {
           else if (n === 'r') s += '\r';
           else if (n === '\\') s += '\\';
           else if (n === "'") s += "'";
-          else s += '\\' + n; // 非法转义：原样保留
+          else s += '\\' + n;
           i += 2; col += 2;
           continue;
         }
         if (c === "'") { i++; col++; closed = true; break; }
-        if (c === '\n') { line++; col = 1; i++; continue; }
+        if (c === '\n') throw new SyntaxError(`Line ${sl}: unterminated string`);
         s += c; i++; col++;
       }
-      if (!closed) throw new SyntaxError(`第 ${startLine} 行: 字符串未闭合`);
-      push('str', s, startLine, startCol);
+      if (!closed) throw new SyntaxError(`Line ${sl}: unterminated string`);
+      push('str', s, sl, sc);
       continue;
     }
 
-    // 数字
-    if (/[0-9]/.test(ch) || (ch === '.' && /[0-9]/.test(src[i + 1] || ''))) {
-      let s = '';
-      while (i < src.length && /[0-9.]/.test(src[i])) { s += src[i]; i++; col++; }
-      push('num', Number(s), startLine, startCol);
+    if (/[0-9]/.test(ch)) {
+      let n = '';
+      while (i < src.length && /[0-9.]/.test(src[i])) { n += src[i]; i++; col++; }
+      push('num', Number(n), sl, sc);
       continue;
     }
 
-    // # 糖：贪心吃 [0-9A-Za-z\-_]，遇非法字符截断
     if (ch === '#') {
       let count = 0;
       while (src[i] === '#') { count++; i++; col++; }
       let name = '';
-      while (i < src.length && IDENT_CHAR.test(src[i])) { name += src[i]; i++; col++; }
-      push('hash', { count, name }, startLine, startCol);
+      while (i < src.length && IDENT_PART.test(src[i])) { name += src[i]; i++; col++; }
+      if (!name) throw new SyntaxError(`Line ${sl}: expected name after '#'`);
+      push('hash', { count, name }, sl, sc);
       continue;
     }
 
-    // 标识符 / 关键字
-    if (/[A-Za-z_]/.test(ch)) {
-      let s = '';
-      while (i < src.length && /[A-Za-z0-9_]/.test(src[i])) { s += src[i]; i++; col++; }
-      push('ident', s, startLine, startCol);
+    if (IDENT_START.test(ch)) {
+      let name = '';
+      while (i < src.length && IDENT_PART.test(src[i])) { name += src[i]; i++; col++; }
+      push('ident', name, sl, sc);
       continue;
     }
 
-    // 标点
-    if ('{}()[],;'.includes(ch)) {
-      push('punct', ch, startLine, startCol);
+    if ('(){},;'.includes(ch)) {
+      push('punct', ch, sl, sc);
       i++; col++;
       continue;
     }
 
-    throw new SyntaxError(`第 ${line} 行: 无法识别的字符 '${ch}'`);
+    throw new SyntaxError(`Line ${sl}: unexpected character '${ch}'`);
   }
 
   push('eof', null, line, col);
