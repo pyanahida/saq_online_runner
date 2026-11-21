@@ -1,0 +1,15 @@
+main{
+    input('请输入一个数字');
+    var('n', tonum(##ipt));
+    if(not(eq(#n, #n)), {
+        say('不是数字');
+    }, {
+        var('i', 0);
+        var('sum', 0);
+        while(lt(#i, #n), {
+            sa('sum', #i);
+            sa('i', 1);
+        });
+        say(cat('累加: ', #sum));
+    });
+}

@@ -10,20 +10,26 @@ const promptEl = document.getElementById('prompt');
 const inputBox = document.getElementById('inputBox');
 const okBtn = document.getElementById('ok');
 
+// 动态加载示例
+fetch('./eg.txt')
+  .then((r) => r.text())
+  .then((t) => { codeEl.value = t; })
+  .catch(() => { codeEl.value = 'main{\n    say(\'hello\');\n}\n'; });
+
 let pendingResolve = null;
 
 function print(text) {
-  const line = document.createElement('div');
-  line.textContent = text;
-  consoleEl.appendChild(line);
+  const d = document.createElement('div');
+  d.textContent = text;
+  consoleEl.appendChild(d);
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 
 function printError(text) {
-  const line = document.createElement('div');
-  line.className = 'err';
-  line.textContent = text;
-  consoleEl.appendChild(line);
+  const d = document.createElement('div');
+  d.className = 'err';
+  d.textContent = text;
+  consoleEl.appendChild(d);
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 
@@ -32,9 +38,7 @@ function showInput(prompt) {
   inputBox.value = '';
   overlay.classList.add('show');
   inputBox.focus();
-  return new Promise((resolve) => {
-    pendingResolve = resolve;
-  });
+  return new Promise((resolve) => { pendingResolve = resolve; });
 }
 
 function commitInput() {
@@ -47,14 +51,11 @@ function commitInput() {
 }
 
 okBtn.addEventListener('click', commitInput);
-inputBox.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') commitInput();
-});
+inputBox.addEventListener('keydown', (e) => { if (e.key === 'Enter') commitInput(); });
 
 runBtn.addEventListener('click', async () => {
   consoleEl.innerHTML = '';
   const src = codeEl.value;
-
   let ast;
   try {
     ast = parse(lex(src));
@@ -62,9 +63,7 @@ runBtn.addEventListener('click', async () => {
     printError(`语法错误: ${e.message}`);
     return;
   }
-
   const interp = new Interpreter({ print, input: showInput });
-
   try {
     await interp.run(ast);
   } catch (e) {
