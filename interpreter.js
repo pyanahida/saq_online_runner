@@ -17,7 +17,9 @@ export class Interpreter {
     }
 
     for (const node of program.body) {
-      if (node.type === 'ExprStmt') {
+      if (node.type === 'Main') {
+        await this.execBlock(node.body);
+      } else if (node.type === 'ExprStmt') {
         await this.exec(node);
       }
     }

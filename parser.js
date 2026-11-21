@@ -20,11 +20,15 @@ export function parse(tokens) {
     const t = peek();
     if (t.type === 'ident' && t.value === 'def') return parseDef();
     if (t.type === 'ident' && t.value === 'end') return parseEnd();
+    if (t.type === 'ident' && t.value === 'main' && tokens[p + 1] && tokens[p + 1].value === '{') {
+      next();
+      return { type: 'Main', body: parseBlock() };
+    }
     return parseExprStmt();
   }
 
   function parseDef() {
-    next(); // def
+    next();
     expect('(');
     const nameTok = next();
     if (nameTok.type !== 'str') throw new SyntaxError(`Line ${nameTok.line}: def name must be a string`);
@@ -41,7 +45,7 @@ export function parse(tokens) {
   }
 
   function parseEnd() {
-    next(); // end
+    next();
     const body = parseBlock();
     return { type: 'End', body };
   }
@@ -67,10 +71,15 @@ export function parse(tokens) {
     return parseCall();
   }
 
+  function parseArg() {
+    if (peek().value === '{') return parseBlock();
+    return parseExpr();
+  }
+
   function parseCall() {
     let callee;
-
     const t = peek();
+
     if (t.type === 'ident' && t.value === 'usr') {
       next();
       expect('::');
@@ -82,8 +91,7 @@ export function parse(tokens) {
       callee = { type: 'Ident', name: t.value };
     } else if (t.type === 'amp') {
       next();
-      callee = { type: 'Amp', name: t.value.name };
-      return callee;
+      return { type: 'Amp', name: t.value.name };
     } else if (t.type === 'hash') {
       next();
       return { type: 'Hash', count: t.value.count, name: t.value.name };
@@ -103,7 +111,7 @@ export function parse(tokens) {
     const args = [];
     while (peek().value !== ')') {
       if (args.length) expect(',');
-      args.push(parseExpr());
+      args.push(parseArg());
     }
     expect(')');
     return { type: 'Call', callee, args };
