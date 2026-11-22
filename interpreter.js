@@ -52,14 +52,12 @@ export class Interpreter {
       case 'Num':
       case 'Str':
         return node.value;
-
       case 'Hash': {
         if (!this.vars.has(node.name)) {
           throw new Error(`变量 '${node.name}' 未定义`);
         }
         return this.vars.get(node.name);
       }
-
       case 'Amp': {
         const frame = this.frames[this.frames.length - 1];
         if (!frame) {
@@ -68,16 +66,12 @@ export class Interpreter {
         }
         return frame.params.get(node.name);
       }
-
       case 'Ident':
         return node;
-
       case 'UserCallRef':
         return node;
-
       case 'Call':
         return await this.evalCall(node);
-
       default:
         throw new Error(`unknown expression: ${node.type}`);
     }
@@ -85,7 +79,13 @@ export class Interpreter {
 
   async evalCall(node) {
     const args = [];
-    for (const a of node.args) args.push(await this.evalExpr(a));
+    for (const a of node.args) {
+      if (a && a.type === 'Block') {
+        args.push(a);
+      } else {
+        args.push(await this.evalExpr(a));
+      }
+    }
 
     if (node.callee.type === 'UserCallRef') {
       const def = this.funcs.get(node.callee.name);
@@ -121,19 +121,22 @@ export class Interpreter {
       return async () => self.evalExpr(arg);
     };
 
+    const branch = async (cond, thenB, elseB) => {
+      const c = await cond;
+      if (c) return await thunk(thenB)();
+      if (elseB) return await thunk(elseB)();
+      return undefined;
+    };
+
     return {
       say: (v) => { self.io.print(String(v)); return v; },
-
       var: (name, value) => { self.vars.set(String(name), value); return value; },
-
       del: (name) => { self.vars.delete(String(name)); return undefined; },
-
       input: async (prompt) => {
         const v = await self.io.input(String(prompt));
         self.vars.set('ipt', v);
         return v;
       },
-
       add: (a, b) => a + b,
       sub: (a, b) => a - b,
       mul: (a, b) => a * b,
@@ -143,20 +146,13 @@ export class Interpreter {
       lt: (a, b) => a < b,
       cat: (...xs) => xs.join(''),
       tonum: (v) => Number(v),
-
-      'if-else': async (cond, thenB, elseB) => {
-        const c = await cond;
-        if (c) return await thunk(thenB)();
-        if (elseB) return await thunk(elseB)();
-        return undefined;
-      },
-
+      'if-else': branch,
+      if: branch,
       loop: async (n, body) => {
         const times = Number(await n);
         for (let k = 0; k < times; k++) await thunk(body)();
         return undefined;
       },
-
       while: async (condArg, body) => {
         const condThunk = thunk(condArg);
         const bodyThunk = thunk(body);
