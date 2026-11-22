@@ -11,7 +11,7 @@ def('sum',n){
 main{
     input('请输入一个数字');
     var('n', tonum(##ipt));
-    if(not(eq(#n, #n)), {
+    if-else(not(eq(#n, #n)), {
         say('不是数字');
     }, {
         usr::sum(#n);

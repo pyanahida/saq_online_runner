@@ -7,7 +7,7 @@ export class Interpreter {
     this.frames = [];
   }
 
-  async run(program) {
+    async run(program) {
     for (const node of program.body) {
       if (node.type === 'Def') {
         this.funcs.set(node.name, node);
@@ -15,7 +15,6 @@ export class Interpreter {
         this.endBlock = node;
       }
     }
-
     for (const node of program.body) {
       if (node.type === 'Main') {
         await this.execBlock(node.body);
@@ -23,13 +22,14 @@ export class Interpreter {
         await this.exec(node);
       }
     }
-
     if (this.endBlock) {
       await this.execBlock(this.endBlock.body);
     }
   }
 
-  async exec(node) {
+
+    async exec(node) {
+    if (!node) return;
     if (node.type === 'ExprStmt') {
       await this.evalExpr(node.expr);
       return;
@@ -38,16 +38,15 @@ export class Interpreter {
       await this.execBlock(node);
       return;
     }
+    if (node.type === 'Main' || node.type === 'End' || node.type === 'Def') {
+      await this.execBlock(node.body);
+      return;
+    }
     await this.evalExpr(node);
   }
 
-  async execBlock(block) {
-    for (const s of block.body) {
-      await this.exec(s);
-    }
-  }
-
   async evalExpr(node) {
+    if (!node) return undefined;
     switch (node.type) {
       case 'Num':
       case 'Str':
@@ -67,15 +66,39 @@ export class Interpreter {
         return frame.params.get(node.name);
       }
       case 'Ident':
-        return node;
       case 'UserCallRef':
+        return node;
+      case 'Block':
         return node;
       case 'Call':
         return await this.evalCall(node);
       default:
-        throw new Error(`unknown expression: ${node.type}`);
+        throw new Error(`unknown expression: ${node && node.type}`);
     }
   }
+
+  async evalCall(node) {
+    const args = [];
+    for (const a of node.args) {
+      if (a && a.type === 'Block') {
+        args.push(a);
+      } else {
+        args.push(await this.evalExpr(a));
+      }
+    }
+
+    if (node.callee.type === 'UserCallRef') {
+      const def = this.funcs.get(node.callee.name);
+      if (!def) throw new Error(`函数 '${node.callee.name}' 未定义`);
+      return await this.callUser(def, args);
+    }
+
+    const name = node.callee.name;
+    const fn = this.builtins()[name];
+    if (!fn) throw new Error(`函数 '${name}' 未定义`);
+    return await fn.apply(this, args);
+  }
+
 
   async evalCall(node) {
     const args = [];
